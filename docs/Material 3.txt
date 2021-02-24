@@ -1,0 +1,96 @@
+Material
+By now I expect that most of you will have working implementations of the common module functions and their corresponding tests. Hopefully you've finished agent_random and begun collaborating on the minimax/negamax (with alpha-beta pruning) agent. In the process of developing it, you will very likely make some errors. While properly written tests should catch many of these errors, diagnosing where and why they are occuring can nevertheless be challenging. This is where a debugger becomes helpful.
+
+Debugging
+Debuggers are arguably the most important tool for diagnosing a misbehaving program. While you can use the standard Python debugger pdb, I encourage you to use PyCharm's debugger, as it makes many common debugging tasks trivial. Rather than write my own guide to the PyCharm debugger, I recommend starting here with this official introduction. Once you've read that very basic guide, you might consider reading the more extensive documentation. Pay attention to the keyboard shortcuts, because using them will make you vastly more efficient. Note that the keyboard shortcuts are OS specific, so be sure to select your OS in the dropdown at the top of the documentation website (if you're using Ubuntu, choose GNOME).
+
+Particularly important sections of the documentation are:
+
+Breakpoints
+Examine suspended program
+Evaluating Expressions
+Step through the program
+Viewing as Array or DataFrame
+In the introduction, you'll come across the program to solve quadratic equations from the tutorial:
+
+
+import math
+
+
+class Solver:
+
+    def demo(self, a, b, c):
+        d = b ** 2 - 4 * a * c
+        if d > 0:
+            disc = math.sqrt(d)
+            root1 = (-b + disc) / (2 * a)
+            root2 = (-b - disc) / (2 * a)
+            return root1, root2
+        elif d == 0:
+            return -b / (2 * a)
+        else:
+            return "This equation has no roots"
+
+
+if __name__ == '__main__':
+    solver = Solver()
+
+    while True:
+        a = int(input("a: "))
+        b = int(input("b: "))
+        c = int(input("c: "))
+        result = solver.demo(a, b, c)
+        print(result)
+
+And here's the program estimating Pi, with which you can test out the debugger a little further:
+
+
+import numpy as np
+
+class PiEstimator:
+
+    def __init__(self, number_darts):
+        self.darts = number_darts
+        self.counter = 0
+        self.pi_estimate = None
+
+    def estimate(self):
+        for _ in range(self.darts):
+            x, y = np.random.rand(1, 2)
+            rad = np.sqrt(x**2 + y**2)
+            if rad <= 1.:
+                self.counter += 1
+
+        self.pi_estimate = 4 * self.counter/self.darts
+        print('Estimated value of Pi after {} darts: {:5f}'.format(self.darts, self.pi_estimate))
+
+
+if __name__ == '__main__':
+    estimator = PiEstimator(10000)
+    estimator.estimate()
+
+Minimax with alpha-beta pruning
+If you've made it this far (congratulations!), it's now time to start the first substantial task of the semester.
+
+While Connect 4 is a solved game, it nevertheless provides an interesting platform to learn the basics of algorithmic game-play.
+
+The agent you implement will use some variant of the Minimax algorithm, which attempts to minimize the possible loss for a worst-case scenario (i.e. it assumes the opponent will be trying to create a worst-case scenario for you, each time it makes a move). It does this by looking at possible moves that might be taken in the future by itself and its opponent. This set of future game-states forms a tree, and so Minimax is essentially a tree search algorithm.
+
+On its face, this appears to be a pretty straightforward problem: Just exhaustively build the game tree, and only choose actions that lead to wins. Unfortunately, for a 6x7 board the number of possible board configurations is... large (4,531,985,219,092 to be precise). If you somehow stored this tree using a single byte per board, it would take over 4,500 GB of memory.
+
+The solution that Minimax-based approaches typically employ is to evaluate the game tree down to some fixed depth (say, 4 moves into the future), and then assigns a value/cost to that board state by applying a heuristic.
+
+While naïve Minimax is an effective solution to the problem of choosing your agents next action, it is not terribly efficient. To see why, consider a Minimax algorithm that looks two moves into the future (its own move, then its opponent's response), and how it would evaluate the following mini-board:
+
+  X
+O OO
+X XO
+====
+0123
+The agent is playing X. It begins by considering its opponents possible responses to it playing in column 0 (the game sub-tree). None of the responses lead to an immediate end state, so it assigns a cost to each board resulting from those responses. The cost then of playing column 0 is taken to be the maximum of those costs (since it is assumed the opponent will choose the worst-case outcome for our agent). Let's imagine that cost is 5.
+
+The agent next considers the game sub-tree that results from playing in column 1. It will soon see that its opponent will immediately win by responding in column 1. Surely this cost is higher than 5 (the worst-case cost of playing column 0). Standard Minimax will continue to consider all of its opponents other potential responses (i.e. what happens if the opponent plays column 2 or 3), despite the fact that playing in column 1 will clearly lead to a very bad outcome. This additional computation is unnecessary, and can be skipped because playing column 1 results in a worse worst-case than playing in column 0.
+
+Eliminating this inefficiency is what alpha-beta pruning does.
+
+Finally, instead of Minimax, you might consider implementing Negamax.

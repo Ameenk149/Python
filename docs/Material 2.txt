@@ -1,0 +1,114 @@
+Week 2 code snippets
+Add the following code to your agents.common module:
+
+from typing import Callable, Tuple
+
+class SavedState:
+    pass
+
+
+GenMove = Callable[
+    [np.ndarray, BoardPiece, Optional[SavedState]],  # Arguments for the generate_move function
+    Tuple[PlayerAction, Optional[SavedState]]  # Return type of the generate_move function
+]
+And the following code to your main.py file:
+
+import numpy as np
+from typing import Optional, Callable
+from agents.common import PlayerAction, BoardPiece, SavedState, GenMove
+
+def user_move(board: np.ndarray, _player: BoardPiece, saved_state: Optional[SavedState]):
+    action = PlayerAction(-1)
+    while not 0 <= action < board.shape[1]:
+        try:
+            action = PlayerAction(input("Column? "))
+        except:
+            pass
+    return action, saved_state
+
+
+def human_vs_agent(
+    generate_move_1: GenMove,
+    generate_move_2: GenMove = user_move,
+    player_1: str = "Player 1",
+    player_2: str = "Player 2",
+    args_1: tuple = (),
+    args_2: tuple = (),
+    init_1: Callable = lambda board, player: None,
+    init_2: Callable = lambda board, player: None,
+):
+    import time
+    from agents.common import PLAYER1, PLAYER2, GameState
+    from agents.common import initialize_game_state, pretty_print_board, apply_player_action, check_end_state
+
+    players = (PLAYER1, PLAYER2)
+    for play_first in (1, -1):
+        for init, player in zip((init_1, init_2)[::play_first], players):
+            init(initialize_game_state(), player)
+
+        saved_state = {PLAYER1: None, PLAYER2: None}
+        board = initialize_game_state()
+        gen_moves = (generate_move_1, generate_move_2)[::play_first]
+        player_names = (player_1, player_2)[::play_first]
+        gen_args = (args_1, args_2)[::play_first]
+
+        playing = True
+        while playing:
+            for player, player_name, gen_move, args in zip(
+                players, player_names, gen_moves, gen_args,
+            ):
+                t0 = time.time()
+                print(pretty_print_board(board))
+                print(
+                    f'{player_name} you are playing with {"X" if player == PLAYER1 else "O"}'
+                )
+                action, saved_state[player] = gen_move(
+                    board.copy(), player, saved_state[player], *args
+                )
+                print(f"Move time: {time.time() - t0:.3f}s")
+                apply_player_action(board, action, player)
+                end_state = check_end_state(board, player)
+                if end_state != GameState.STILL_PLAYING:
+                    print(pretty_print_board(board))
+                    if end_state == GameState.IS_DRAW:
+                        print("Game ended in draw")
+                    else:
+                        print(
+                            f'{player_name} won playing {"X" if player == PLAYER1 else "O"}'
+                        )
+                    playing = False
+                    break
+
+if __name__ == "__main__":
+    human_vs_agent(user_move)
+If you've correctly implemented the functions assigned last week, you should now be able to play a game of Connect 4 against yourself. How fun!
+
+Random Agent
+The random agent will live in its own package (agents.agent_random), and will contain a file called random.py that implements a function of type GenMove:
+
+def generate_move_random(
+    board: np.ndarray, player: BoardPiece, saved_state: Optional[SavedState]
+) -> Tuple[PlayerAction, Optional[SavedState]]:
+    # Choose a valid, non-full column randomly and return it as `action`
+    return action, saved_state
+Your random agent package __init__.py file should contain:
+
+from .random import generate_move_random as generate_move
+As you learned last week, this will allow you to write from agents.agent_random import generate_move. If you put that import in your main script, you can then call human_vs_agent(generate_move) and play against the random agent.
+
+This random agent (aside from being boring to play against) will serve as a useful baseline to compare your minimax agent against.
+
+What the heck is SavedState for?
+Some of you asked about the purpose of the SavedState argument to the generate_move function. The idea is that the first time in a game that generate_move is called, the value of that argument is None. Then in the process of choosing its first action, your agent might do a bunch of computation that it could reuse for future moves. Instead of just throwing that away, you can put it in an instance of your SavedState class, e.g.
+
+class SavedState:
+    def __init__(self, computational_result):
+        self.computational_result = computational_result
+Your agent then returns that object as the second value of the returned tuple (recall that the type of the return value for the generate_move function is Tuple[PlayerAction, Optional[SavedState]]). The next time your agent's generate_move function is called, that exact object you returned will be passed back in as the third argument. You can then resume your computation using the previous result. This approach is not very useful for minimax, but in the next phase of the project where you're using different algorithms it can save your agent some work on each move.
+
+If you don't need or want any saved state, then you just make the second value in the returned tuple None (or equivalently, return the saved_state that was passed in).
+
+PLEASE DO NOT USE ANYONE ELSE'S CODE!
+While there are plenty of Python Minimax/Negamax implementations freely available, I would strongly encourage you to not look at (or god forbid, copy!) them. Doing so would defeat the entire purpose of this exercise, and you'll only be cheating yourself of the opportunity to improve your programming skills.
+
+Have fun, and don't hesitate to ask questions!

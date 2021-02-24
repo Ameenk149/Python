@@ -1,0 +1,6 @@
+implement a software agent that plays the (turn-based, perfect information) game Connect 4. The semester will proceed in three main phases:
+
+Implement core utility functions, sufficient to play against another human. ( Please use git for source control)
+Design and implement an agent that uses mini-max with alpha-beta pruning and a simple heuristic (roughly by the end of Week 6).
+Choose a more advanced approach, and implement that. e.g. gradient-based learning, reinforcement learning... (rest of semester)
+Part 2&3 are being conducted in groups of 2. At each phase, code should be well tested and well documented. Collaboration within each group should use appropriate software development processes, including issue tracking, milestones, feature development within repository branches, etc.

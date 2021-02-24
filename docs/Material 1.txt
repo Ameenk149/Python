@@ -1,0 +1,255 @@
+Material
+Python scripts, modules and packages
+It possible to work with Python in several different ways. The first is interactively: You can use Python's interactive shell REPL to type in Python code and excecute it on the interpreter, see the result, enter more code, and so on. Once you close the shell, all of your code and results are gone. Obviously this is not ideal for developing complicated programs.
+
+The second is to put your code into a script (in Python this is any file with a .py file extension that has executable code in it). As your program becomes larger, you might want to split it into multiple files. This is where the idea of a module comes in. If you have two scripts, say script_a.py and script_b.py that both rely on some common functionality, you might refactor that code into a module called common.py. The main distinguishing characteristic of a module is that running it directly (i.e. with the command python common.py) typically does nothing other than define some things, such as classes and functions (this is not a strict rule: there are exceptions to this, but we will ignore them for now).
+
+Once you have a module, you can easily access the shared functionality it contains. In our example, this might be how script_a.py does:
+
+import common
+print(common.foo())
+# Output: "Help me, I was refactored, and now I'm stuck in the common module!"
+Alternatively, this might be how script_b.py does:
+
+from common import foo
+print(foo())
+# Output: "Help me, I was refactored, and now I'm stuck in the common module!"
+So what happens if you project gets larger still, and you don't want 3000 module files in your project directory? You can start organizing your modules into packages. In Python, the traditional definition of a package is simply a directory that has an __init__.py file in it. This is no longer strictly necessary, but I would nevertheless recommend following this practice. The __init__.py file is the first thing that gets executed when you import a package. Let's look at an example where I don't define an init file:
+
+Project directory
+    |-> my_first_package
+    |   \-> common.py
+    \-> script.py
+If I want to access functionality defined in the module common, I now have to import it from my_first_package:
+
+from my_first_package import common
+print(common.foo())
+# Output: "Oh no! Now it's even worse: My module got stuck in a package!"
+from my_first_package.common import foo  # You can also do this.
+So what if we don't want to worry about where in the package foo is defined? We can add an __init__.py file to the my_first_package directory, with the following code:
+
+from .common import foo
+Now we can import foo like so:
+
+from my_first_package import foo
+What just happened there? When Python first encounters a package within an import statement (including if you're importing a module contained within the package), the first thing the interpreter does is run the __init__.py file in that package. The fact that foo was imported into the namespace of the init file means that it's accessible from the namespace of the package.
+
+Import statements
+This brings us to the topic of import statement syntax. In general, there are four different kinds of import statements:
+
+import <package>
+import <module>
+from <package> import <module or subpackage or object>
+from <module> import <object>
+For all four of these, you can use the as syntax to create an alias for the import (import x as y, from a import b as c).
+
+This finally brings us to everyone's favourite topic: absolute vs. relative imports. Similar to how paths work in a file system, you can specify the location of a package/module either in absolute terms (in file system terms, this means specifying a path starting in the root directory, e.g. /var/lib), or relative to the location of the module doing the import (e.g. ./lib if my shell is currently in the /var directory).
+
+Relative imports are only permitted using the from x import y syntax, as in from .<module/package> import y, where <module/package> is prefixed by a single dot to indicate the current package. Two dots indicates one package above (similar to how cd .. moves you up one directory in a file system), three dots two packages above, etc. I've already used a relative import in from .common import foo. This says import foo from the module common, which is in the directory that this file is in.
+
+Structuring a Python Project
+The structure of a project can seriously affect your ability to write good code. Consequently, in the tutorial, I began with a demonstration of creating a project in an IDE (PyCharm). The project should be structured like so:
+
+<projdir>
+    |-> angents
+    |   |-> agent_minimax
+    |   |   |-> __init__.py
+    |   |   \-> minimax.py
+    |   |-> __init__.py
+    |   \-> common.py
+    |-> tests
+    |   |-> __init__.py
+    |   \-> test_common.py
+    \-> main.py
+The main.py file is the main script to be run when you want to play a game against the agent. It should not contain any code that the agents package is dependent on. This particular project structure has many benefits, both in general, and specifically for the Connect 4 tournament. Because groups might choose to implement multiple agents, the common.py file is a good place to put standard functions and other common dependencies.
+
+Python import resolution, and "Is my project directory a package?"
+"Is my project directory a package?"
+
+Yes and no. To understand this annoying answer, we first need to discuss how Python finds packages. When the interpreter encounters an import statement referring to a package (or module) that hasn't yet been imported, it needs to find where that package is located. The first place it looks is the built-in Python Standard Library (e.g. os, functools). If it isn't found there, it then looks at the list found in sys.path. That list contains all the directories in which the interpreter will look for the requested import.
+
+To see this list for yourself, run python -c "import sys; print(sys.path)" on the command line. Note that the first entry sys.path[0] is an empty string: ''. If you had put that same code into a script, and run the script instead, sys.path[0] would contain the directory in which the script resides (this point is crucial, keep it in mind for later).
+
+After encountering a package/module for the first time, it adds it to the dictionary sys.modules (which maps from the absolute path, to the in-memory module object, e.g. {'numpy.ma.core': <module object>}), so that it doesn't have to load the module again during the current program execution. (Technical note: Packages are kept in sys.modules as the module {'<pack_name>': module object <pack_name>/__init__.py}, meaning that packages are stored as their __init__ module).
+
+At this point you're probably saying "OK, enough! Just answer the bloody question!". Fair enough, here's the "no" part of the answer:
+
+If you run python main.py (for the project structure described in the previous section), then Python starts looking for packages and modules within <projdir>. That means if within <projdir>/agents/agent_minimax/minimax.py you have import agents.common, it begins searching for a directory called agents within <projdir>. Likewise if you write import <projdir>.agents.common, it also starts searching within <projdir> for a directory called <projdir>. Obviously this will not succeed.
+
+The same kind of logic applies for relative imports. Within minimax.py you can simply write from ..common import x. In contrast, if I want to import something from main.py, you might try from ...main import x. The three dots mean "look up two packages from my current location". One up is agents, and two up is... Unfortunately, there isn't anything above agents because it is the root of the package hierarchy when you run main.py.
+
+Ultimately if <projdir> does not exist in sys.modules and cannot be found by searching in the directory main.py is in, it cannot be used when specifying an import, neither in absolute nor relative terms! So in some important sense, your project directory is not a package.
+
+Now here is the "yes" part of the answer:
+
+You could add a script to the directory that contains <projdir>, and in that script write import <projdir>. This will potentially work. The one complication is that any absolute imports of packages defined in your project will fail! That's because the root of the package hierarchy has changed so that the absolute path of agents is now <projdir>.agents. So if you intend to do this, you must always use relative imports in the packages you write.
+
+Technical note for smart/sneaky people
+
+Yes, the following code will work: in minimax.py you can write import main. DO NOT DO THIS. You are almost certain to create circular dependencies that will result in a runtime failure. "Fine, then I'll only import from modules in my project directory, not the main script!" says the sneaky person. All right, that technically will work, but will mean your package agents can never be used in another project, since you need to carry around those modules defined in <projdir> that agents depends on. In that case, why bother making a package at all? Never write code that has dependencies that point upward out of the outermost package you've created. DON'T DO IT.
+
+Week 1 Task
+Your task during the first week is to implement the following functions, inside common.py:
+
+from enum import Enum
+from typing import Optional
+
+BoardPiece = np.int8  # The data type (dtype) of the board
+NO_PLAYER = BoardPiece(0)  # board[i, j] == NO_PLAYER where the position is empty
+PLAYER1 = BoardPiece(1)  # board[i, j] == PLAYER1 where player 1 has a piece
+PLAYER2 = BoardPiece(2)  # board[i, j] == PLAYER2 where player 2 has a piece
+
+PlayerAction = np.int8  # The column to be played
+
+class GameState(Enum):
+    IS_WIN = 1
+    IS_DRAW = -1
+    STILL_PLAYING = 0
+
+def initialize_game_state() -> np.ndarray:
+    """
+    Returns an ndarray, shape (6, 7) and data type (dtype) BoardPiece, initialized to 0 (NO_PLAYER).
+    """
+    raise NotImplementedError()
+
+def pretty_print_board(board: np.ndarray) -> str:
+    """
+    Should return `board` converted to a human readable string representation,
+    to be used when playing or printing diagnostics to the console (stdout). The piece in
+    board[0, 0] should appear in the lower-left. Here's an example output:
+    |==============|
+    |              |
+    |              |
+    |    X X       |
+    |    O X X     |
+    |  O X O O     |
+    |  O O X X     |
+    |==============|
+    |0 1 2 3 4 5 6 |
+    """
+    raise NotImplementedError()
+
+def string_to_board(pp_board: str) -> np.ndarray:
+    """
+    Takes the output of pretty_print_board and turns it back into an ndarray.
+    This is quite useful for debugging, when the agent crashed and you have the last 
+    board state as a string.
+    """
+    raise NotImplementedError()
+
+def apply_player_action(
+    board: np.ndarray, action: PlayerAction, player: BoardPiece, copy: bool = False
+) -> np.ndarray:
+    """
+    Sets board[i, action] = player, where i is the lowest open row. The modified
+    board is returned. If copy is True, makes a copy of the board before modifying it.
+    """
+    raise NotImplementedError()
+
+def connected_four(
+    board: np.ndarray, player: BoardPiece, last_action: Optional[PlayerAction] = None,
+) -> bool:
+    """
+    Returns True if there are four adjacent pieces equal to `player` arranged
+    in either a horizontal, vertical, or diagonal line. Returns False otherwise.
+    If desired, the last action taken (i.e. last column played) can be provided
+    for potential speed optimisation.
+    """
+    raise NotImplementedError()
+
+def check_end_state(
+    board: np.ndarray, player: BoardPiece, last_action: Optional[PlayerAction] = None,
+) -> GameState:
+    """
+    Returns the current game state for the current `player`, i.e. has their last
+    action won (GameState.IS_WIN) or drawn (GameState.IS_DRAW) the game, 
+    or is play still on-going (GameState.STILL_PLAYING)?
+    """
+    raise NotImplementedError()
+Test-driven development
+You're going to be doing test-driven development (TDD). Consequently, you need to devise and implement appropriate tests for all those functions, prior to writing them.
+
+Testing, especially when done before actually implementing your cool, new ideas, often seems like a distraction. Writing new code can be fun and rewarding, while writing tests---after the fact---feels like an annoying responsibility (like cleaning up after the party). Fortunately, when using TDD, testing makes writing & maintaining code easier, more effective, and less bug-prone. Without proper testing it is possible to waste weeks investigating "scientific results" that ultimately turn out to be nothing but a programming error (this happens a lot).
+
+The advantages to TDD are manifold:
+
+Having to write tests first forces you to think carefully about how a function should behave.
+Once all tests of a function pass, you can be confident your implementation is correct.
+Refactoring and optimisation often introduce subtle bugs. Running your tests after making changes will reduce these errors.
+Effective testing relies on careful thought about the desired behaviour of your functions. What input values/types are valid, and what is the corresponding output? What should you do about invalid inputs? Think about special cases: Edge/Boundary, Corner, and Base cases.
+
+PyTest
+For testing, I recommend using the pytest framework. For PyCharm integration to work correctly, you need to enable it. Go to File->Settings (Win/Linux) or PyCharm->Preferences (Mac), then Tools->Python Integrated Tools, and change "Default test runner" to pytest.
+
+Since the functions you are to implement are in common.py, you should put their tests in tests/test_common.py. Here's an example of a very simple test of initialize_game_state:
+
+import numpy as np
+from agents.common import BoardPiece, NO_PLAYER
+
+def test_initialize_game_state():
+    from agents.common import initialize_game_state
+
+    ret = initialize_game_state()
+
+    assert isinstance(ret, np.ndarray)
+    assert ret.dtype == BoardPiece
+    assert ret.shape == (6, 7)
+    assert np.all(ret == NO_PLAYER)
+If you enabled pytest support in Pycharm, you will notice that right-clicking on test_common.py now reveals the option to "Run pytest in test_common.py", and a green arrow appears to the left of any test functions in that file (click on the arrow to run just that test).
+
+There are more concepts out there that might be worth checking out in more detail (I haven't done so myself yet). See the following links for more information:
+
+Contract programming
+Property-based testing
+PBT + Contracts
+PBT for numpy
+Hypothesis library for PBT
+Type hints
+The first think to know is that Python is a dynamically typed language. More specifically, Python uses something known as duck typing. In brief, an operator (function) can be applied to any set of operands (objects) so long as the operands have certain necessary properties. An example might help:
+
+def foo(a, b):
+    return a + b
+
+foo(1, 2)
+# Output: 3
+
+foo('x', 'y')
+# Output: 'xy'
+
+foo(1, 'y')
+# Output: TypeError: can only concatenate str (not "int") to str
+The function foo is indifferent to the type of its arguments a & b. The only thing that matters is that there is some sensible way in which to perform an addition operation on the two of them. Here's another example:
+
+def bar(name):
+    return "Hello " + name
+
+bar("Sue")
+# Output: "Hello Sue"
+
+bar(123)
+# Output: TypeError: can only concatenate str (not "int") to str
+It would be useful to provide a hint to ourselves, and any user of the function bar that it can only accept an argument of type string, and that it returns a string:
+
+def bar(name: str) -> str:
+    return "Hello " + name
+Obviously in this example it is trivial to determine this simply by looking at the code. But for more complicated functions, it can become highly non-trivial to determine exactly what types are permitted, and the return type. Furthermore, when working in a good editor, those type hints make autocompletion (when the editor makes suggestions to you) more effective, and can permit the editor to warn you when you're doing something wrong.
+
+Returning to our function foo, we can also improve this function a bit using type hints:
+
+from typing import TypeVar
+T = TypeVar('T')
+
+def foo(a: T, b: T) -> T:
+    return a + b
+
+foo(1, 'x')
+# PyCharm warning: Expected type 'int' (matched generic type 'T'), got 'str' instead
+That code now informs the programmer, and the IDE, that the type of a and b must match, and that the return value has the same type as the arguments. Please note that this example is merely meant to be educational. This approach (and type hinting in general) will not keep you from shooting yourself in the foot, i.e. if the arguments have the same type, but there is no way to add them, the program will still fail at run time (with an error like TypeError: unsupported operand type(s) for +: 'A' and 'A', if the arguments are of type A).
+
+On enumerations
+Enumerations are widely used in programming because it is common to want to specify that one of a finite set of conditions is true. So take GameState as an example: Either the last move has resulted in a win, a draw, or the game is still being played. Now how should one specify this? One could return a string ("WIN", "DRAW", "STILL_PLAYING"), but this solution is error-prone and requires recalling these "magic strings", or looking up the set of valid ones. Every time you check the value of the game state, you risk introducing a bug if you slightly mis-type that string. OK, so strings are bad, what about defining "magic integers", i.e.
+
+WIN = 1
+DRAW = -1
+STILL_PLAYING = 0
+That is certainly better than the strings, and is basically what the enum class does, except that by using an enum, you specify in one location the complete set of accepted values. This makes code autocompletion extremely effective for discovering those values. And that's basically it. Enums aren't super sexy or exciting, but they've been one of the bread-and-butter features of programming languages since time immemorial and should definitely be in the tool-belt of every competent programmer.

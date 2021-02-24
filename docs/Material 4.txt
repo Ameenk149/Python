@@ -1,0 +1,183 @@
+Material
+Tutorial 4
+Performance in Python
+It is often important to consider the run-time performance of the code you write. While compute resources have become vast and inexpensive, some numerical simulations and analyses can run for hours or even days. For the project you're currently engaged in, the agents will eventually play in a tournament where their run-time will be restricted, and so their ability to evaluate more positions in less time will directly impact their standing in the tournament. More importantly your ability to write high-performance numerical code can determine whether a simulation that you write takes 1 hour, instead of 10 hours, to complete.
+
+While the great Donald Knuth has famously said "Premature optimization is the root of all evil", it does not mean that one shouldn't keep performance in mind from the outset. "Does this code have the potential to run fast?" is a question worth asking yourself throughout the development process. Unfortunately, knowing whether the code you write meets that standard is very difficult, and even a lot of experience sometimes does not save you from being surprised by the performance of your code. Thus, I would advocate the following strategy for writing fast code:
+
+Write your tests.
+Write code that is readable and maintainable.
+Test for correctness.
+Profile the execution of your program.
+If it's fast enough, you're done.
+Otherwise, optimize the most expensive parts of your program.
+Return to step 3.
+Performance in Connect Four
+For pedagogic purposes, we're going to skip to step 6 for now, and then later return to step 4.
+
+One of the core functions for any Connect Four agent is the one that checks if there are four pieces of the same type connected in a line (we've been calling it connected_four). Depending on your implementation of minimax you may have to call this function thousands of times per move, and as such, it is worth considering its performance. Nevertheless, one should first write for readability/maintainability.
+
+In the code below, I've provided two implementations, connected_four_iter and connected_four_convolve, which are both reasonably easy to understand. Below their implementation I've used the timeit module to evaluate their performance. timeit is very useful for performing "micro benchmarks", i.e. checking the run-time of a small piece of code.
+
+
+disable_jit = False
+if disable_jit:
+    import os
+
+    os.environ['NUMBA_DISABLE_JIT'] = '1'
+
+import timeit
+import numpy as np
+from numba import njit
+from scipy.signal import convolve2d
+from typing import Optional
+from agents.common import connected_four, initialize_game_state, BoardPiece, PlayerAction, NO_PLAYER
+
+
+CONNECT_N = 4
+
+@njit()
+def connected_four_iter(
+        board: np.ndarray, player: BoardPiece, _last_action: Optional[PlayerAction] = None
+) -> bool:
+    rows, cols = board.shape
+    rows_edge = rows - CONNECT_N + 1
+    cols_edge = cols - CONNECT_N + 1
+
+    for i in range(rows):
+        for j in range(cols_edge):
+            if np.all(board[i, j:j + CONNECT_N] == player):
+                return True
+
+    for i in range(rows_edge):
+        for j in range(cols):
+            if np.all(board[i:i + CONNECT_N, j] == player):
+                return True
+
+    for i in range(rows_edge):
+        for j in range(cols_edge):
+            block = board[i:i + CONNECT_N, j:j + CONNECT_N]
+            if np.all(np.diag(block) == player):
+                return True
+            if np.all(np.diag(block[::-1, :]) == player):
+                return True
+
+    return False
+
+
+col_kernel = np.ones((CONNECT_N, 1), dtype=BoardPiece)
+row_kernel = np.ones((1, CONNECT_N), dtype=BoardPiece)
+dia_l_kernel = np.diag(np.ones(CONNECT_N, dtype=BoardPiece))
+dia_r_kernel = np.array(np.diag(np.ones(CONNECT_N, dtype=BoardPiece))[::-1, :])
+
+
+def connected_four_convolve(
+        board: np.ndarray, player: BoardPiece, _last_action: Optional[PlayerAction] = None
+) -> bool:
+    board = board.copy()
+
+    other_player = BoardPiece(player % 2 + 1)
+    board[board == other_player] = NO_PLAYER
+    board[board == player] = BoardPiece(1)
+
+    for kernel in (col_kernel, row_kernel, dia_l_kernel, dia_r_kernel):
+        result = convolve2d(board, kernel, mode='full')
+        if np.any(result == CONNECT_N):
+            return True
+    return False
+
+
+board = initialize_game_state()
+
+number = 10**4
+
+res = timeit.timeit("connected_four_iter(board, player)",
+                    setup="connected_four_iter(board, player)",
+                    number=number,
+                    globals=dict(connected_four_iter=connected_four_iter,
+                                 board=board,
+                                 player=BoardPiece(1)))
+
+print(f"Python iteration-based: {res / number * 1e6 : .1f} us per call")
+
+res = timeit.timeit("connected_four_convolve(board, player)",
+                    number=number,
+                    globals=dict(connected_four_convolve=connected_four_convolve,
+                                 board=board,
+                                 player=BoardPiece(1)))
+
+print(f"Convolve2d-based: {res / number * 1e6 : .1f} us per call")
+
+res = timeit.timeit("connected_four(board, player)",
+                    setup="connected_four(board, player)",
+                    number=number,
+                    globals=dict(connected_four=connected_four,
+                                 board=board,
+                                 player=BoardPiece(1)))
+
+print(f"My secret sauce: {res / number * 1e6 : .1f} us per call")
+
+If I run the above code, I get the output:
+
+Python iteration-based:  317.9 us per call
+Convolve2d-based:  39.9 us per call
+My secret sauce: <this should be your implementation's run-time>
+While the convolve2d-based approach is initially (an order of magnitude) faster than our for loop-based approach, try setting disable_jit (on the first line) to False which will enable Just-in-time (JIT) compilation of the connected_four_iter function by numba. Here are the results when I do just that:
+
+Python iteration-based:  12.7 us per call
+Convolve2d-based:  43.5 us per call
+My secret sauce: <this should be your implementation's run-time>
+Micro Benchmark Caveat
+When performing micro benchmarks like these, one crucial point to bear in mind is that run-time can sometimes be significantly affected by the data your code is operating on. For example, consider what happens to run time if there is four connected pieces on the first row of the board (board[0, :4] = PLAYER1):
+
+Python iteration-based:  0.5 us per call
+Convolve2d-based:  23.0 us per call
+As such, it is often worth finding a way to provide a range of different inputs to the function you are benchmarking. How to do so in this case will be left as an exercise for the reader. :)
+
+Profiling Your Agent
+Hopefully in the next couple of weeks you will have a working agent (that passes all your tests, and appears to play correctly). On that day, it is time for step 4 of the strategy outlined above. Profiling an entire program provides critical information about where optimisation effort will pay the greatest dividends.
+
+Python provides a profiler as part of its standard library called cProfile (see the docs here). You can profile your agent with the following code:
+
+import cProfile
+from agents.agent_minimax import generate_move
+from agents.common import human_vs_agent
+
+cProfile.run(
+"human_vs_agent(generate_move, generate_move)", "mmab"
+)
+To avoid having to re-run this every time we want to look at the profiling data, we've saved the data to a file called "mmab". We can later inspect the results by using pstats:
+
+import pstats
+p = pstats.Stats("mmab")
+p.sort_stats("tottime").print_stats(50)
+To understand the output of the profiler, I recommend reading its documentation, but here's a copy of the portion that explains the meaning of the measured quantities, by their column headings:
+
+ncalls
+    for the number of calls.
+
+tottime
+    for the total time spent in the given function (and excluding time made in calls to sub-functions)
+
+percall
+    is the quotient of tottime divided by ncalls
+
+cumtime
+    is the cumulative time spent in this and all subfunctions (from invocation till exit). This figure is accurate even for recursive functions.
+
+percall
+    is the quotient of cumtime divided by primitive calls
+
+filename:lineno(function)
+    provides the respective data of each function
+Alternatively, you can use a graphical tool such as snakeviz. Such tools can make it much more intuitive to understand where most of your execution time is spent, and in particular, whether a function is truly "slow" or if most of its execution time is spent calling other functions.
+
+Once you have data on where your agent spends most of its execution time, you can now begin to optimise those parts. At this step there is now a sub-loop:
+
+Use timeit to determine the current per-call run time of the function to be optimised.
+Modify the function.
+Test for correctness.
+Check it again with timeit. Is it faster / fast enough?
+If yes, re-run the profiler and decide if further optimisation is needed.
+If no, return to step 2 of this sub-loop.
+Again, don't forget that the data you use during the micro benchmarking can have a big impact on the resulting run time. Micro benchmarking is not a substitute for profiling the complete system, running under normal conditions.
